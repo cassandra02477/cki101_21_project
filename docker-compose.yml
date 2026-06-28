@@ -3,3 +3,16 @@ services:
     build: .
     ports:
       - "80:5000"
+    depends_on:
+      - mysql.cki101
+
+  mysql.cki101:
+    image: mysql:8.4
+    container_name: mysql.cki101
+    ports:
+      - "8625:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: cass123
+      MYSQL_DATABASE: cki101_db
+    volumes:
+      - ./db_data:/var/lib/mysql
