@@ -3,6 +3,12 @@ services:
     build: .
     ports:
       - "80:5000"
+    environment:
+      DB_HOST: mysql.cki101
+      DB_PORT: 3306
+      DB_USER: root
+      DB_PASSWORD: cass123
+      DB_NAME: cki101_db
     depends_on:
       - mysql.cki101
 

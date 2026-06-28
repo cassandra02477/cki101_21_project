@@ -4,6 +4,7 @@ import os
 
 app = Flask(__name__)
 
+
 DB_HOST = os.environ.get("DB_HOST", "localhost")
 DB_PORT = int(os.environ.get("DB_PORT", 8625))
 DB_USER = os.environ.get("DB_USER", "root")
