@@ -1,3 +1,4 @@
+from google.cloud import storage
 from flask import Flask, request, jsonify, render_template_string
 import pymysql
 import os
@@ -178,6 +179,137 @@ def delete_user(user_id):
     conn.commit()
     conn.close()
     return jsonify({"message": "刪除成功"})
+
+
+
+
+
+GCP_PAGE = """
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>GCP Storage 瀏覽器</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 40px auto; padding: 0 20px; }
+        h1 { color: #333; }
+        input { padding: 8px; margin: 5px; border: 1px solid #ddd; border-radius: 4px; width: 300px; }
+        button { padding: 8px 16px; margin: 5px; border: none; border-radius: 4px; cursor: pointer; background: #4285F4; color: white; }
+        button:hover { background: #357ABD; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { padding: 10px; border: 1px solid #ddd; text-align: left; }
+        th { background: #f5f5f5; }
+        tr:hover { background: #f9f9f9; }
+        .msg { padding: 10px; margin: 10px 0; border-radius: 4px; }
+        .error { background: #f2dede; color: #a94442; }
+        .bucket-btn { background: #34A853; margin: 3px; padding: 6px 12px; font-size: 13px; }
+        .back-btn { background: #888; margin: 3px; padding: 6px 12px; font-size: 13px; }
+    </style>
+</head>
+<body>
+    <h1>GCP Cloud Storage 瀏覽器</h1>
+
+    <h2>輸入 Project ID</h2>
+    <input type="text" id="project-id" placeholder="例如：cki101-21-project">
+    <button onclick="listBuckets()">查詢 Buckets</button>
+    <div id="msg"></div>
+
+    <div id="bucket-area"></div>
+    <div id="file-area"></div>
+
+    <script>
+        let currentProject = '';
+
+        async function listBuckets() {
+            const projectId = document.getElementById('project-id').value.trim();
+            if (!projectId) { showMsg('請輸入 Project ID'); return; }
+            currentProject = projectId;
+
+            const res = await fetch('/gcp/buckets?project_id=' + projectId);
+            const data = await res.json();
+
+            if (data.error) { showMsg(data.error); return; }
+
+            const area = document.getElementById('bucket-area');
+            if (data.buckets.length === 0) {
+                area.innerHTML = '<p>此專案沒有 Bucket</p>';
+                return;
+            }
+
+            let html = '<h2>Bucket 列表</h2>';
+            data.buckets.forEach(b => {
+                html += `<button class="bucket-btn" onclick="listFiles('${b}')">${b}</button>`;
+            });
+            area.innerHTML = html;
+            document.getElementById('file-area').innerHTML = '';
+        }
+
+        async function listFiles(bucket) {
+            const res = await fetch('/gcp/files?bucket=' + bucket);
+            const data = await res.json();
+
+            if (data.error) { showMsg(data.error); return; }
+
+            const area = document.getElementById('file-area');
+            let html = `<h2>📂 ${bucket} 的檔案</h2>`;
+            html += `<button class="back-btn" onclick="document.getElementById('file-area').innerHTML=''">← 返回</button>`;
+
+            if (data.files.length === 0) {
+                html += '<p>此 Bucket 沒有檔案</p>';
+            } else {
+                html += '<table><thead><tr><th>檔案名稱</th><th>大小</th><th>最後更新</th></tr></thead><tbody>';
+                data.files.forEach(f => {
+                    html += `<tr><td>${f.name}</td><td>${f.size}</td><td>${f.updated}</td></tr>`;
+                });
+                html += '</tbody></table>';
+            }
+            area.innerHTML = html;
+        }
+
+        function showMsg(text) {
+            const msg = document.getElementById('msg');
+            msg.className = 'msg error';
+            msg.textContent = text;
+            setTimeout(() => msg.textContent = '', 4000);
+        }
+    </script>
+</body>
+</html>
+"""
+
+@app.route("/gcp")
+def gcp_page():
+    return render_template_string(GCP_PAGE)
+
+@app.route("/gcp/buckets")
+def list_buckets():
+    project_id = request.args.get("project_id")
+    if not project_id:
+        return jsonify({"error": "請提供 project_id"}), 400
+    try:
+        client = storage.Client(project=project_id)
+        buckets = [b.name for b in client.list_buckets()]
+        return jsonify({"buckets": buckets})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/gcp/files")
+def list_files():
+    bucket_name = request.args.get("bucket")
+    if not bucket_name:
+        return jsonify({"error": "請提供 bucket 名稱"}), 400
+    try:
+        client = storage.Client()
+        bucket = client.bucket(bucket_name)
+        blobs = client.list_blobs(bucket_name)
+        files = [{
+            "name": b.name,
+            "size": f"{b.size / 1024:.1f} KB" if b.size else "0 KB",
+            "updated": b.updated.strftime("%Y-%m-%d %H:%M") if b.updated else ""
+        } for b in blobs]
+        return jsonify({"files": files})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == "__main__":
     init_db()
